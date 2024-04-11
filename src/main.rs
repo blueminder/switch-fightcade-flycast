@@ -40,6 +40,14 @@ fn get_version_by_hash(bin_path: &str) -> String {
     }
 }
 
+fn get_version_type(flycast_tag: &str) -> String {
+    if flycast_tag == "dojo-0.5.8" {
+        return String::from("Bundled");
+    } else {
+        return String::from("Prerelease");
+    }
+}
+
 fn pause() {
     let mut stdin = io::stdin();
     let mut stdout = io::stdout();
@@ -108,11 +116,30 @@ fn main() -> std::io::Result<()> {
     // replace flycast dojo version name in fightcade title bar
     let inject_path = "..\\fc2-electron\\resources\\app\\inject\\inject.js";
     if Path::new(&inject_path).exists() {
-        let inject_contents = fs::read_to_string(&inject_path)?;
+        let mut inject_contents = fs::read_to_string(&inject_path)?;
+
         let title_old_version_string = format!("(Flycast Version: {})", old_version);
-        let title_new_version_string = format!("(Flycast Version: {})", new_version);
-        let inject_replaced =
-            inject_contents.replace(&title_old_version_string, &title_new_version_string);
+
+        let title_old_version_type_string = format!(
+            "(Flycast Version: {}, {})",
+            old_version,
+            get_version_type(&old_version)
+        );
+        let title_new_version_type_string = format!(
+            "(Flycast Version: {}, {})",
+            new_version,
+            get_version_type(&new_version)
+        );
+
+        if inject_contents.contains(&title_old_version_string) {
+            inject_contents =
+                inject_contents.replace(&title_old_version_string, &title_old_version_type_string)
+        }
+
+        let inject_replaced = inject_contents.replace(
+            &title_old_version_type_string,
+            &title_new_version_type_string,
+        );
         let tmp_inject_path = "..\\fc2-electron\\resources\\app\\inject\\inject.js.tmp";
         let mut tmp_inject = File::create(tmp_inject_path)?;
         write!(tmp_inject, "{}", inject_replaced)?;
@@ -120,18 +147,17 @@ fn main() -> std::io::Result<()> {
         fs::rename(&tmp_inject_path, &inject_path)?;
     } else {
         // create new inject file with fightcade title modification
-        let fc_title_inject_contents = concat!(
-            "const appendFlycastTitle = function (fcWindow) {\n",
-            "  const fcDoc = fcWindow.document\n",
-            "  fcDoc.title += \" (Flycast Version: FLYCAST_TAG)\"\n",
-            "}\n\n",
-            "appendFlycastTitle(window)\n"
+        let fc_title_inject_contents = format!(
+            "const appendFlycastTitle = function (fcWindow) {{\n\
+              const fcDoc = fcWindow.document\n\
+              fcDoc.title += \" (Flycast Version: {}, {})\"\n\
+            }}\n\n\
+            appendFlycastTitle(window)\n",
+            new_version,
+            get_version_type(&new_version)
         );
-        let fc_title_inject_replaced = fc_title_inject_contents
-            .to_string()
-            .replace("FLYCAST_TAG", &new_version);
         let mut inject = File::create(inject_path)?;
-        write!(inject, "{}", fc_title_inject_replaced)?;
+        write!(inject, "{}", fc_title_inject_contents)?;
     }
 
     if new_version.is_empty() {
